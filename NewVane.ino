@@ -345,7 +345,8 @@ void fn_sample( void ) {
   uint8_t p = 0;
   epoch = millis();
   memset( dir, 0, sizeof(dir));
-  while ( ( millis() - epoch ) < 29940 )
+  
+  while ( ( millis() - epoch ) < 15000 )
   {
     p = pcf.digitalReadByte();
     switch( p )
@@ -363,7 +364,7 @@ void fn_sample( void ) {
       case 32:    pa = 11;    break;    // 32
       case 96:    pa = 12;    break;    // 32 + 64
       case 64:    pa = 13;    break;    // 64
-      case 196:   pa = 14;    break;    // 64 + 128
+      case 192:   pa = 14;    break;    // 64 + 128
       case 128:   pa = 15;    break;    //128
       case 129:   pa = 16;    break;    //128 + 1
       default:    pa = 0;     break;
@@ -379,14 +380,14 @@ void loop() {
   ArduinoOTA.handle();
   sequence++;
   fn_sample();
-  sprintf( MQTT_PUB, "$,%05i,%05i", sequence, period);
+  sprintf( MQTT_PUB, "$%05i,%05i", sequence, period);
   for ( i=0; i<=16; i++)
   {
     strcat( MQTT_PUB, "," );
     sprintf( my_dir, "%03i", dir[ i ] );
     strcat( MQTT_PUB, my_dir );
   }
-  strcat( MQTT_PUB, ",#" );
+  strcat( MQTT_PUB, "#" );
   /*	publish <UID> to MQTT  */
   if (!client.connected()) fn_MQTT_Connect();
   Serial.print( "MQTT Publish : ");
