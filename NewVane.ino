@@ -3,7 +3,8 @@
   Version:      0.0
   Date:         01/09/2025
   Changes       <- Date -> <-Time-> <-V->	<-    Comment                                 >
-  Latest Edit:  06/09/2025 31:00    0.1		Creation
+  Latest Edit:  06/09/2025 11:00    0.1		Creation
+                23/02/2026 16:00    1.0		Production
 */
 
 /*
@@ -17,7 +18,7 @@
 #include <ESP8266mDNS.h>
 #include <ArduinoOTA.h>
 #include <WiFiUdp.h>
-
+#include "param.h";
 /*
   ESP8266WiFi at version 1.0
   PubSubClient at version 2.8
@@ -44,69 +45,6 @@
     https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
  */
 
-/*  Definition Section  */
-
-#define device 0x39
-#define sda D2
-#define scl D1
-#define freq 100000
-
-#define MSG_BUFFER_SIZE 50
-#define MQTT_SIZE 20
-
-#define SizePass 20
-
-/*  variable instantiation  */
-
-/*  Network Credentials */
-const char* Home_WiFi     = "GOULD_TP";
-char Home_Pass[SizePass]  = "pr`rxgvx";
-const char* Home_MQTT     = "192.168.1.178";
-
-const char* MiS_WiFi      = "BTB-NTCHT6";
-char MiS_Pass[SizePass]   = "RHCagINtyI}`k>";
-const char* MiS_MQTT      = "192.168.1.249";
-
-const char* Jim_WiFi      = "BT-S7AT5Q";
-char Jim_Pass[SizePass]   = "vHqbS8{:YqKX@q";
-const char* Jim_MQTT      = "192.168.1.165";
-
-const char* Rich_WiFi     = "GOULDWAN24";
-char Rich_Pass[SizePass]  = "Tgkf2;47cd";
-const char* Rich_MQTT     = "192.168.1.178";
-
-const char* MiS_BASE      = "MiS";
-const char* MiS_DEVICE    = "VANE";
-const char* IN_TOPIC      = "FromMaster";
-const char* OUT_TOPIC     = "Data";
-const char* RST_TOPIC     = "RST";
-const char* STAT_IN_TOPIC = "STAT/IN";
-const char* STAT_OUT_TOPIC = "STAT/OUT";
-const char* Version       = "0.1";
-
-char MQTT_server[20];
-char MQTT_PUB[200], MQTT_IN[MQTT_SIZE], MQTT_OUT[MQTT_SIZE], MQTT_RST[MQTT_SIZE], MQTT_STATIN[MQTT_SIZE], MQTT_STATOUT[ MQTT_SIZE], MiS_HEAD[10];
-
-int MQTT_PORT = 1883;
-
-int dir[ 30 ], sequence = 0;
-
-char my_dir[ 10 ];
-char WiFi_Pass[20];
-char PUB_message[MSG_BUFFER_SIZE], SUB_message[MSG_BUFFER_SIZE];
-char MQTT_in_buffer[MSG_BUFFER_SIZE], MQTT_in_topic[20];
-char my_IP_Address[20];  //  xxx:qsort.xxx.xxx.xxx
-int MQTT_in_flag, MQTT_in_length;
-unsigned long epoch, pulse, payload_time;
-uint8_t i = 0, rtn = 0, count = 0;
-int net, network, networks;
-int in, now, then, pa, period;
-char * q;
-
-int ON  = 1;
-int OFF = 0;
-
-unsigned long ota_progress_millis = 0;
 
 /*  Instance creation */
 
@@ -125,7 +63,7 @@ void setup() {
 /*
  *  Setup 8 bit 8574 interface
  */
-  if (!pcf.begin(device, &Wire)) {
+  if (!pcf.begin(PCF8574, &Wire)) {
     Serial.println("Couldn't find PCF8574");
     while (1);
   }
@@ -144,6 +82,7 @@ void setup() {
   sprintf( MQTT_RST,      "%s/%s", MiS_HEAD, RST_TOPIC );
   sprintf( MQTT_STATIN,   "%s/%s", MiS_HEAD, STAT_IN_TOPIC );
   sprintf( MQTT_STATOUT,  "%s/%s", MiS_HEAD, STAT_OUT_TOPIC );
+  sprintf( MQTT_DEVICES,  "%s/%s/%s", MiS_BASE, DEV_TOPIC, MiS_DEVICE );
   
 /*
  *  decrypt passwords
@@ -168,9 +107,9 @@ void setup() {
   count = 0;
   Serial.print(" WiFi Connecting ");
   fn_WiFi_Connect( net );
-  Serial.print( "IP Address : " );
-  Serial.println( WiFi.localIP().toString().c_str() );
 
+  strcpy(my_IP_Address, WiFi.localIP().toString().c_str());
+  strcpy(my_MAC_Address, WiFi.macAddress().c_str());
 /*
  *  MQTT setup
  */
@@ -217,6 +156,13 @@ void setup() {
   ArduinoOTA.begin();
 
   epoch = millis();      //  start the clock
+
+  strcpy( MQTT_PUB, "ESP 8266,");
+  strcat( MQTT_PUB, my_IP_Address );
+  strcat( MQTT_PUB, "," );
+   strcat( MQTT_PUB, my_MAC_Address );
+  /*  publish to MQTT  */
+      client.publish(MQTT_DEVICES, (const uint8_t*)MQTT_PUB, strlen(MQTT_PUB), false);
 }
 /*
  *  END of SETUP
@@ -349,6 +295,8 @@ void fn_sample( void ) {
   while ( ( millis() - epoch ) < 15000 )
   {
     p = pcf.digitalReadByte();
+//    Serial.print( "8574 : " );
+//  	Serial.println( p );
     switch( p )
     {
       case 1:     pa = 1;     break;    //  1
@@ -369,7 +317,7 @@ void fn_sample( void ) {
       case 129:   pa = 16;    break;    //128 + 1
       default:    pa = 0;     break;
     }    
-    dir[ pa ]++;
+    dir[ pa ] = dir[ pa ] + 1;
     delay( 100 );
     client.loop();
   }
