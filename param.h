@@ -1,4 +1,5 @@
 /*  Definition Section  */
+// Small edit by Jim 28/02/2026 17:38 (line 36)
 
 #define PCF8574 0x27
 #define sda D2
@@ -32,7 +33,7 @@ char Rich_Pass[SizePass]  = "Tgkf2;47cd";
 const char* Rich_MQTT     = "192.168.1.178";
 
 const char* MiS_BASE      = "MiS";
-const char* MiS_DEVICE    = "VANE_1";
+const char* MiS_DEVICE    = "VANE";
 const char* OUT_TOPIC     = "Data";
 const char* RST_TOPIC     = "RST";
 const char* STAT_IN_TOPIC = "STAT/IN";
