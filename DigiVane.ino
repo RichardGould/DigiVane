@@ -3,7 +3,9 @@
   Version:      0.0
   Date:         01/09/2025
   Changes       <- Date -> <-Time-> <-V->	<-    Comment                                 >
-  Latest Edit:  06/09/2025 31:00    0.1		Creation
+  Latest Edit:  06/09/2025 11:00    0.1		Creation
+                23/02/2026 16:00    1.0		Production
+                19/04/2026 23:00    1.1   Time Correction
 */
 
 /*
@@ -18,12 +20,14 @@
 #include <ArduinoOTA.h>
 #include <WiFiUdp.h>
 
+#include "DigiVane.h"     
+
 /*
   ESP8266WiFi at version 1.0
   PubSubClient at version 2.8
   Wire at version 1.0
   Adafruit PCF8574 at version 1.1.2
-  Adafruit BusIO at version 1.17.2
+  Adafruit BusIO at version 1.17.4
   SPI at version 1.0 
   ESP8266mDNS at version 1.2 
   ArduinoOTA at version 1.0 
@@ -44,187 +48,125 @@
     https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
  */
 
-/*  Definition Section  */
-
-#define device 0x27
-#define sda D2
-#define scl D1
-#define freq 100000
-
-#define MSG_BUFFER_SIZE 50
-#define MQTT_SIZE 20
-
-#define SizePass 20
-
-/*  variable instantiation  */
-
-/*  Network Credentials */
-const char* Home_WiFi     = "GOULD_TP";
-char Home_Pass[SizePass]  = "pr`rxgvx";
-const char* Home_MQTT     = "192.168.1.178";
-
-const char* MiS_WiFi      = "BTB-NTCHT6";
-char MiS_Pass[SizePass]   = "RHCagINtyI}`k>";
-const char* MiS_MQTT      = "192.168.1.249";
-
-const char* Jim_WiFi      = "BT-S7AT5Q";
-char Jim_Pass[SizePass]   = "vHqbS8{:YqKX@q";
-const char* Jim_MQTT      = "192.168.1.165";
-
-const char* Rich_WiFi     = "GOULDWAN24";
-char Rich_Pass[SizePass]  = "Tgkf2;47cd";
-const char* Rich_MQTT     = "192.168.1.178";
-
-const char* MiS_BASE      = "MiS";
-const char* MiS_DEVICE    = "VANE";
-const char* IN_TOPIC      = "FromMaster";
-const char* OUT_TOPIC     = "Data";
-const char* RST_TOPIC     = "RST";
-const char* STAT_IN_TOPIC = "STAT/IN";
-const char* STAT_OUT_TOPIC = "STAT/OUT";
-const char* DEVICES_TOPIC = "DEVICES/VANE";
-const char* Version       = "0.1";
-
-char MQTT_server[20];
-char MQTT_PUB[200], MQTT_IN[MQTT_SIZE], MQTT_OUT[MQTT_SIZE], MQTT_RST[MQTT_SIZE], MQTT_STATIN[MQTT_SIZE], MQTT_STATOUT[ MQTT_SIZE], MiS_HEAD[10];
-char MQTT_DEVICES[50];
-
-int MQTT_PORT = 1883;
-
-int dir[ 30 ], sequence = 0;
-
-char my_dir[ 10 ];
-char WiFi_Pass[20];
-char PUB_message[MSG_BUFFER_SIZE], SUB_message[MSG_BUFFER_SIZE];
-char MQTT_in_buffer[MSG_BUFFER_SIZE], MQTT_in_topic[20];
-char my_IP_Address[20];  //  xxx:qsort.xxx.xxx.xxx
-char my_MAC_Address[20];
-int MQTT_in_flag, MQTT_in_length;
-unsigned long epoch, pulse, payload_time;
-uint8_t i = 0, rtn = 0, count = 0;
-int net, network, networks;
-int in, now, then, pa, period;
-char * q;
-
-int ON  = 1;
-int OFF = 0;
-
-unsigned long ota_progress_millis = 0;
 
 /*  Instance creation */
 
 WiFiClient espClient;              // WiFi instance
 
-PubSubClient client(espClient);    // MQTT instance
+PubSubClient client( espClient );  // MQTT instance
 
-Adafruit_PCF8574 pcf;             // 8574 Instance
+Adafruit_PCF8574 pcf;              // 8574 Instance
 
 /*
  *	Setup
  */
 void setup() {
   Serial.begin( 115200 );
-  while (!Serial) delay(1000);
+  while (!Serial) delay( 1000 );
 /*
  *  Setup 8 bit 8574 interface
  */
-  if (!pcf.begin(device, &Wire)) {
-    Serial.println("Couldn't find PCF8574");
-    while (1);
-  }
-  Serial.println( "8574 found" );
+  //if (!pcf.begin(PCF8574, &Wire)) {
+  //  Serial.println("Couldn't find PCF8574");
+  //  while (1);
+  //}
+  //Serial.println( "8574 found" );
 /*
  *	All pins of 8574 are inputs
  */
-  for ( i=0; i<8; i++) pcf.pinMode(i, INPUT_PULLUP);
+//  for ( i=0; i<8; i++) pcf.pinMode(i, INPUT_PULLUP);
 
 /*
  *    Construct MQTT tokens
  */ 
   sprintf( MiS_HEAD,      "%s/%s", MiS_BASE, MiS_DEVICE );
-  sprintf( MQTT_IN,       "%s/%s", MiS_HEAD, IN_TOPIC );
   sprintf( MQTT_OUT,      "%s/%s", MiS_HEAD, OUT_TOPIC );
   sprintf( MQTT_RST,      "%s/%s", MiS_HEAD, RST_TOPIC );
   sprintf( MQTT_STATIN,   "%s/%s", MiS_HEAD, STAT_IN_TOPIC );
   sprintf( MQTT_STATOUT,  "%s/%s", MiS_HEAD, STAT_OUT_TOPIC );
-  sprintf( MQTT_DEVICES,  "%s/%s", MiS_BASE, DEVICES_TOPIC);
-
+  sprintf( MQTT_DEVICES,  "%s/%s/%s", MiS_BASE, DEV_TOPIC, MiS_DEVICE );
+  sprintf( MQTT_TIME,     "%s/%s", MiS_BASE, TIME_TOPIC );
+  
 /*
  *  decrypt passwords
  */
-  for (i = 0; i < (int)strlen(Home_Pass); i++) Home_Pass[i] = Home_Pass[i] + 3 - i;
-  for (i = 0; i < (int)strlen(MiS_Pass);  i++) MiS_Pass[i]  = MiS_Pass[i]  + 3 - i;
-  for (i = 0; i < (int)strlen(Jim_Pass);  i++) Jim_Pass[i]  = Jim_Pass[i]  + 3 - i;
-  for (i = 0; i < (int)strlen(Rich_Pass); i++) Rich_Pass[i] = Rich_Pass[i] + 3 - i;
+  for ( i = 0; i < (int)strlen( Home_Pass ); i++) Home_Pass[ i ] = Home_Pass[ i ] + 3 - i;
+  for ( i = 0; i < (int)strlen( MiS_Pass  ); i++) MiS_Pass[ i ]  = MiS_Pass[ i ]  + 3 - i;
+  for ( i = 0; i < (int)strlen( Jim_Pass  ); i++) Jim_Pass[ i ]  = Jim_Pass[ i ]  + 3 - i;
+  for ( i = 0; i < (int)strlen( Rich_Pass ); i++) Rich_Pass[ i ] = Rich_Pass[ i ] + 3 - i;
 /*
  *  determine where the WiFi is
  */
   net = fn_WiFiScan();
 
-  if (net == -2) fn_ReStart();  // restart wemo
+  if ( net == -2 ) fn_ReStart();  // restart wemo
   
   Serial.print( "Network : " );
   Serial.println( net );
-
 /*
  *  Connect to recognised WiFi
  */
   count = 0;
-  Serial.print(" WiFi Connecting ");
+  Serial.printf( " WiFi Connecting\n" );
   fn_WiFi_Connect( net );
-  Serial.print( "IP Address : " );
-  Serial.println( WiFi.localIP().toString().c_str() );
-  strcpy(my_IP_Address, WiFi.localIP().toString().c_str());
-  strcpy(my_MAC_Address, WiFi.macAddress().c_str());
-/*
+
+  strcpy( my_IP_Address,  WiFi.localIP().toString().c_str() );
+  strcpy( my_MAC_Address, WiFi.macAddress().c_str() );
 /*
  *  MQTT setup
  */
-  client.setServer(MQTT_server, MQTT_PORT);
-  client.setCallback(MQTT_CB);
-  delay(1000);
-  client.loop();
+  client.setServer( MQTT_server, MQTT_PORT );
+  client.setCallback( MQTT_CB );
+  delay( 1000 );
   fn_MQTT_Connect();
+  client.loop();
 /*
  *	Arduino OTA Setup
  */ 
-  ArduinoOTA.setHostname("VANE");
-  ArduinoOTA.setPassword("mispwd");
-/*
- *  Arduino OTA Callbacks
- */
+  ArduinoOTA.setHostname( "DigiVane" );
+  ArduinoOTA.setPassword( "starwest" );
+
   ArduinoOTA.onStart([]() {
-    Serial.println("Start");
     String type;
-    if (ArduinoOTA.getCommand() == U_FLASH) {
+    if ( ArduinoOTA.getCommand() == U_FLASH )
+	{
       type = "sketch";
-    } else {  // U_FS
+    } else { // U_FS
       type = "filesystem";
     }
+
+    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
+    Serial.println( "Start updating " + type );
   });
-  
   ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
+    Serial.printf( "\nEnd\n" );
   });
-  
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+  ArduinoOTA.onProgress([]( unsigned int progress, unsigned int total ) {
+    Serial.printf( "Progress: %u%%\r", ( progress / ( total / 100 ) ) );
   });
-
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR)   Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR)     Serial.println("End Failed");
-	});
-
+  ArduinoOTA.onError([]( ota_error_t error ) {
+    Serial.printf( "Error[%u]: ", error );
+    if ( error == OTA_AUTH_ERROR ) {
+      Serial.printf( "Auth Failed\n" );
+    } else if ( error == OTA_BEGIN_ERROR ) {
+      Serial.printf( "Begin Failed\n" );
+    } else if ( error == OTA_CONNECT_ERROR ) {
+      Serial.printf( "Connect Failed\n" );
+    } else if ( error == OTA_RECEIVE_ERROR ) {
+      Serial.printf( "Receive Failed\n" );
+    } else if ( error == OTA_END_ERROR ) {
+      Serial.printf( "End Failed\n" );
+    }
+  });
   ArduinoOTA.begin();
-  sprintf( MQTT_PUB, "%s,%s,%s", "ESP 8266", my_IP_Address, my_MAC_Address );
-  client.publish(MQTT_DEVICES, (const uint8_t*)MQTT_PUB, strlen(MQTT_PUB), false);
-
+  strcpy( MQTT_PUB, "ESP 8266,");
+  strcat( MQTT_PUB, my_IP_Address );
+  strcat( MQTT_PUB, "," );
+  strcat( MQTT_PUB, my_MAC_Address );
+  /*  publish to MQTT  */
+  client.publish( MQTT_DEVICES, (const uint8_t*)MQTT_PUB, strlen( MQTT_PUB ), false );
   epoch = millis();      //  start the clock
+  then = epoch;
 }
 /*
  *  END of SETUP
@@ -235,57 +177,48 @@ void setup() {
  */
 int fn_WiFiScan() {
   networks = WiFi.scanNetworks();
-  Serial.print("Networks found : ");
-  Serial.println( networks );
+  Serial.printf( "Networks found : %i\n", networks );
 
-  if (networks == 0) return (-2);               // No Networks found
+  if ( networks == 0 ) return ( -2 );               // No Networks found
 
   for (network = 0; network <= networks; network++) {
-    Serial.print( "Network : " );
-    Serial.print( network );
-    Serial.print( " : " );
-    Serial.print( WiFi.SSID(network).c_str());
-    Serial.print( " : " );
-  	Serial.println( WiFi.RSSI() ); // Get the RSSI value
-  }
-  for (network = 0; network <= networks; network++) {
-    if (strcmp(WiFi.SSID(network).c_str(), Rich_WiFi) == 0) {
-      strcpy(WiFi_Pass, Rich_Pass);
-      strcpy(MQTT_server, Rich_MQTT);
-      return (network);
+    if ( strcmp(WiFi.SSID( network ).c_str(), Rich_WiFi ) == 0 ) {
+      strcpy( WiFi_Pass,   Rich_Pass );
+      strcpy( MQTT_server, Rich_MQTT );
+      return ( network );
     }
-    if (strcmp(WiFi.SSID(network).c_str(), Home_WiFi) == 0) {
-      strcpy(WiFi_Pass, Home_Pass);
-      strcpy(MQTT_server, Home_MQTT);
-      return (network);
+    if ( strcmp( WiFi.SSID( network ).c_str(), Home_WiFi ) == 0 ) {
+      strcpy( WiFi_Pass,   Home_Pass );
+      strcpy( MQTT_server, Home_MQTT );
+      return ( network );
     }
-    if (strcmp(WiFi.SSID(network).c_str(), MiS_WiFi) == 0) {
-      strcpy(WiFi_Pass, MiS_Pass);
-      strcpy(MQTT_server, MiS_MQTT);
-      return (network);
+    if ( strcmp( WiFi.SSID( network ).c_str(), MiS_WiFi ) == 0 ) {
+      strcpy( WiFi_Pass,   MiS_Pass );
+      strcpy( MQTT_server, MiS_MQTT );
+      return ( network );
     }
-    if (strcmp(WiFi.SSID(network).c_str(), Jim_WiFi) == 0) {
-      strcpy(WiFi_Pass, Jim_Pass);
-      strcpy(MQTT_server, Jim_MQTT);
-      return (network);
+    if ( strcmp( WiFi.SSID( network ).c_str(), Jim_WiFi ) == 0 ) {
+      strcpy( WiFi_Pass,   Jim_Pass );
+      strcpy( MQTT_server, Jim_MQTT );
+      return ( network );
     }
   }
 /* if we get here the network found is not recognised */
   fn_ReStart();
-  return(0);
+  return( 0 );
 }
 
 /*	Connect to Wifi */
-int fn_WiFi_Connect(int network) {
+int fn_WiFi_Connect( int network ) {
   int j = 0;
-  delay(2000);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WiFi.SSID(network), WiFi_Pass);
+  delay( 2000 );
+  WiFi.mode( WIFI_STA );
+  WiFi.begin( WiFi.SSID( network ), WiFi_Pass );
 
-  while (j++ < 20) {
-    if (WiFi.status() == WL_CONNECTED) return(0);
-    Serial.print(".");
-	delay(1000);
+  while ( j++ < 20 ) {
+    if ( WiFi.status() == WL_CONNECTED ) return(0);
+    Serial.printf( "." );
+	delay( 1000 );
   }
 
   fn_ReStart();
@@ -295,49 +228,51 @@ int fn_WiFi_Connect(int network) {
 /*
  *  MQTT callback
  */
-int MQTT_CB(char* topic, byte* payload, uint8_t length) {
-  Serial.println( "Message Arrived" );
+int MQTT_CB( char* topic, byte* payload, uint8_t length ) {
+  Serial.printf( "Message Arrived\n" );
   int k;
-  memset(MQTT_in_topic, 0, sizeof(MQTT_in_topic));
-  memset(MQTT_in_buffer, 0, sizeof(MQTT_in_buffer));
+  memset( MQTT_in_topic,  0, sizeof( MQTT_in_topic ) );
+  memset( MQTT_in_buffer, 0, sizeof( MQTT_in_buffer ) );
 
-  strcpy(MQTT_in_topic, topic);
+  strcpy( MQTT_in_topic, topic );
   MQTT_in_length = length;
-  for (k = 0; k < length; k++) MQTT_in_buffer[k] = (char)payload[k];
-  MQTT_in_buffer[k] = 0;
-  Serial.print( "MQTT : " );
-  Serial.print( MQTT_in_topic );
-  Serial.print( " : " );
-  Serial.println( MQTT_in_buffer );
+  for ( k = 0; k < length; k++ ) MQTT_in_buffer[ k ] = (char)payload[ k ];
+  MQTT_in_buffer[ k ] = 0;
+  Serial.printf( "MQTT : %s : %s\n", MQTT_in_topic, MQTT_in_buffer );
   
-  if (strcmp(MQTT_in_topic, MQTT_STATIN) == 0)  // Status Enquiry
+  if ( strcmp( MQTT_in_topic, MQTT_STATIN ) == 0 )  // Status Enquiry
   {
-    if (strcmp(MQTT_in_buffer, "ASK") == 0)
+    if ( strcmp( MQTT_in_buffer, "ASK" ) == 0 )
     {
       strcpy( MQTT_PUB, "OK - ");
       strcat( MQTT_PUB, Version );
 /*  publish status to MQTT  */
-      client.publish(MQTT_STATOUT, (const uint8_t*)MQTT_PUB, strlen(MQTT_PUB), false);
+      client.publish( MQTT_STATOUT, (const uint8_t*)MQTT_PUB, strlen( MQTT_PUB ), false );
     }
   }
-  if (strcmp(MQTT_in_topic, MQTT_RST) == 0)
+  if ( strcmp( MQTT_in_topic, MQTT_RST ) == 0 )
   {
-    if (strcmp(MQTT_in_buffer, "Yes") == 0) fn_ReStart();
+    if ( strcmp( MQTT_in_buffer, "Yes" ) == 0) fn_ReStart();
   }
-  return (1);
+    if ( strcmp( MQTT_in_topic, MQTT_TIME ) == 0 )
+  {
+    fn_Time();
+  }
+  return( 1 );
 }
 
 /*	connect to MQTT broker */
 int fn_MQTT_Connect() {
   int j = 0;
-  while (j < 10) {
-    if (client.connect(MiS_DEVICE) == 1) {
-      delay(2000);
-      client.subscribe(MQTT_RST,  1);
-      client.subscribe(MQTT_STATIN, 1);
+  while ( j < 10 ) {
+    if ( client.connect( MiS_DEVICE ) == 1 ) {
+      delay( 2000 );
+      client.subscribe( MQTT_RST,  1 );
+      client.subscribe( MQTT_STATIN, 1 );
+      client.subscribe( MQTT_TIME, 1 );
       return (0);
     }
-    Serial.print(F("."));
+    Serial.printf( "." );
     delay( 3000 );
     j++;
   }
@@ -352,11 +287,13 @@ void fn_ReStart(void) {
 void fn_sample( void ) {
   uint8_t p = 0;
   epoch = millis();
-  memset( dir, 0, sizeof(dir));
+  memset( dir, 0, sizeof( dir ));
   
   while ( ( millis() - epoch ) < 15000 )
   {
-    p = pcf.digitalReadByte();
+//    p = pcf.digitalReadByte();
+//    Serial.print( "8574 : " );
+//  	Serial.println( p );
     switch( p )
     {
       case 1:     pa = 1;     break;    //  1
@@ -377,18 +314,77 @@ void fn_sample( void ) {
       case 129:   pa = 16;    break;    //128 + 1
       default:    pa = 0;     break;
     }    
-    dir[ pa ]++;
+    dir[ pa ] = dir[ pa ] + 1;
     delay( 100 );
     client.loop();
   }
   period = millis() - epoch;
 }
+void fn_Time( void )
+{
+//	 1296651311.9999^2026/03/18^21:56:01
+//   1775856181.4765,2026/04/10,22:23:01
+//   1775857141.8664,2026/04/10,22:39:01
+//	01234567890123456789012345678901234
+	msg_flag = 0;
+	int i;
+	for ( i=0; i<=14; i++ ) a_timestamp[ i ] = MQTT_in_buffer[ i ];
+	a_timestamp[ 15 ] = 0;
+	timestamp = atof( a_timestamp );
+	for ( i=17; i<=20; i++ ) a_year[ i - 17 ] = MQTT_in_buffer[ i ];
+	a_year[ 4 ] = 0;
+	year = atoi( a_year );
+	a_month[ 0 ] = MQTT_in_buffer[ 22 ];
+	a_month[ 1 ] = MQTT_in_buffer[ 23 ];
+	a_month[ 2 ] = 0;
+	month = atoi( a_month );
+	a_day[ 0 ] = MQTT_in_buffer[ 25 ];
+	a_day[ 1 ] = MQTT_in_buffer[ 26 ];
+	a_day[ 2 ] = 0;
+	for( i=17; i<=35; i++ ) a_date[ i-17] = MQTT_in_buffer[ i ];
+	a_date[ i-17 ] = 0;
+	a_date[ 10] = 32;
+	day = atoi( a_day );
+	a_hour[ 0 ] = MQTT_in_buffer[ 28 ];
+	a_hour[ 1 ] = MQTT_in_buffer[ 29 ];
+	a_hour[ 2 ] = 0;
+	hour = atoi( a_hour );
+	a_minute[ 0 ] = MQTT_in_buffer[ 31 ];
+	a_minute[ 1 ] = MQTT_in_buffer[ 32 ];
+	a_minute[ 2 ] = 0;
+	minute = atoi( a_minute );
+	a_second[ 0 ] = MQTT_in_buffer[ 34 ];
+	a_second[ 1 ] = MQTT_in_buffer[ 35 ];
+	a_second[ 2 ] = 0;
+	second = atoi( a_second );
+	sprintf( a_date, "%s/%s/%s,%s:%s:%s", a_day, a_month, a_year, a_hour, a_minute, a_second );
+	client.unsubscribe( MQTT_TIME );
+	if ( hour == 0 && minute == 10 ) fn_ReStart();
+}
 
 void loop() {
+  now = millis();
+  if ( ( now - then ) >= 60000 )
+  {
+    second = 0;
+    minute = minute + 1;
+    if ( minute >= 60 )
+    {
+      hour = hour + 1;
+      minute = 0;
+    }
+    sprintf( a_date, "%s/%s/%s,%02i:%02i:%02i", a_day, a_month, a_year, hour, minute, second );
+    then = millis();
+    if ( time_count++ == 10 )
+    {
+      client.subscribe( MQTT_TIME );
+      time_count = 1;
+    }
+  }
   ArduinoOTA.handle();
   sequence++;
   fn_sample();
-  sprintf( MQTT_PUB, "$%05i,%05i", sequence, period);
+  sprintf( MQTT_PUB, "$%05i,%05i,%s", sequence, period, a_date );
   for ( i=0; i<=16; i++)
   {
     strcat( MQTT_PUB, "," );
@@ -400,5 +396,6 @@ void loop() {
   if (!client.connected()) fn_MQTT_Connect();
   Serial.print( "MQTT Publish : ");
   Serial.println( MQTT_PUB );
-  client.publish(MQTT_OUT, (const uint8_t*)MQTT_PUB, strlen(MQTT_PUB), false);
+  client.publish( MQTT_OUT, (const uint8_t*)MQTT_PUB, strlen( MQTT_PUB ), false );
+  client.loop();
 }
